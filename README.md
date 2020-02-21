@@ -1,205 +1,118 @@
-# <div align="left"><img src="img/rapids_logo.png" width="90px"/>&nbsp;cuML - RAPIDS Machine Learning Algorithms</div>
+# <div align="left"><img src="img/rapids_logo.png" width="90px"/>&nbsp;cuML - GPU Machine Learning Algorithms</div>
 
-Machine learning is a fundamental capability of RAPIDS. cuML is a suite of libraries that implements a machine learning algorithms within the RAPIDS data science ecosystem. cuML enables data scientists, researchers, and software engineers to run traditional ML tasks on GPUs without going into the details of CUDA programming.
+[![Build Status](https://gpuci.gpuopenanalytics.com/job/rapidsai/job/gpuci/job/cuml/job/branches/job/cuml-branch-pipeline/badge/icon)](https://gpuci.gpuopenanalytics.com/job/rapidsai/job/gpuci/job/cuml/job/branches/job/cuml-branch-pipeline/)
 
-**NOTE:** For the latest stable [README.md](https://github.com/rapidsai/cuml/blob/master/README.md) ensure you are on the `master` branch.
+cuML is a suite of libraries that implement machine learning algorithms and mathematical primitives functions that share compatible APIs with other [RAPIDS](https://rapids.ai/) projects.
 
-The cuML repository contains:
-
-1. ***python***: Python based GPU Dataframe (GDF) machine learning package that takes [cuDF](https://github.com/rapidsai/cudf) dataframes as input. cuML connects the data to C++/CUDA based cuML and ml-prims libraries without ever leaving GPU memory.
-
-2. ***cuML***: C++/CUDA machine learning algorithms. This library currently includes the following six algorithms;
-   a) Single GPU Truncated Singular Value Decomposition (tSVD),
-   b) Single GPU Principal Component Analysis (PCA),
-   c) Single GPU Density-based Spatial Clustering of Applications with Noise (DBSCAN),
-   d) Single GPU Kalman Filtering,
-   e) Multi-GPU K-Means Clustering,
-   f) Multi-GPU K-Nearest Neighbors (Uses [Faiss](https://github.com/facebookresearch/faiss)).
-
-3. ***ml-prims***: Low level machine learning primitives used in cuML. ml-prims is comprised of the following components;
-   a) Linear Algebra,
-   b) Statistics,
-   c) Basic Matrix Operations,
-   d) Distance Functions,
-   e) Random Number Generation.
-
-#### Available Algorithms:
-
-- Truncated Singular Value Decomposition (tSVD),
-
-- Principal Component Analysis (PCA),
-
-- Density-based spatial clustering of applications with noise (DBSCAN),
-
-- K-Means Clustering,
-
-- K-Nearest Neighbors (Requires [Faiss](https://github.com/facebookresearch/faiss) installation to use),
-
-- Linear Regression (Ordinary Least Squares),
-
-- Ridge Regression.
-
-- Kalman Filter.
-
-Upcoming algorithms:
-
-- More Kalman Filter versions, 
-
-- Lasso,
-
-- Elastic-Net,
-
-- Logistic Regression,
-
-- UMAP
+cuML enables data scientists, researchers, and software engineers to run
+traditional tabular ML tasks on GPUs without going into the details of CUDA
+programming. In most cases, cuML's Python API matches the API from
+[scikit-learn](https://scikit-learn.org).
 
 
-More ML algorithms in cuML and more ML primitives in ml-prims are being added currently. Example notebooks are provided in the python folder to test the functionality and performance. Goals for future versions include more algorithms and multi-gpu versions of the algorithms and primitives.
+For large datasets, these GPU-based implementations can complete 10-50x faster
+than their CPU equivalents. For details on performance, see the [cuML Benchmarks
+Notebook](https://github.com/rapidsai/notebooks-contrib/blob/master/intermediate_notebooks/benchmarks/cuml_benchmarks.ipynb).
 
-The installation option provided currently consists on building from source. Upcoming versions will add `pip` and `conda` options, along docker containers. They will be available in the coming weeks.
+As an example, the following Python snippet loads input and computes DBSCAN clusters, all on GPU:
+```python
+import cudf
+from cuml.cluster import DBSCAN
 
+# Create and populate a GPU DataFrame
+gdf_float = cudf.DataFrame()
+gdf_float['0'] = [1.0, 2.0, 5.0]
+gdf_float['1'] = [4.0, 2.0, 1.0]
+gdf_float['2'] = [4.0, 2.0, 1.0]
 
-## Setup
+# Setup and fit clusters
+dbscan_float = DBSCAN(eps=1.0, min_samples=1)
+dbscan_float.fit(gdf_float)
 
-### Conda
-cuML can be installed using the `rapidsai` conda channel:
-```bash
-conda install -c nvidia -c rapidsai -c conda-forge -c pytorch -c defaults cuml
+print(dbscan_float.labels_)
 ```
 
-### Pip
-cuML can also be installed using pip. Select the package based on your version of CUDA:
-```bash
-# cuda 9.2
-pip install cuml-cuda92
-
-# cuda 10.0
-pip install cuml-cuda100
+Output:
 ```
-You also need to ensure `libomp` and `libopenblas` are installed:
-```bash
-apt install libopenblas-base libomp-dev
+0    0
+1    1
+2    2
+dtype: int32
 ```
 
-*Note:* There is no faiss-gpu package installable by pip, so the KNN algorithm will not work unless you install [Faiss](https://github.com/facebookresearch/faiss) manually or via conda (see below).
+cuML also features multi-GPU and multi-node-multi-GPU operation, using [Dask](https://www.dask.org), for a
+growing list of algorithms. The following Python snippet reads input from a CSV file and performs
+a NearestNeighbors query across a cluster of Dask workers, using multiple GPUs on a single node:
+```python
+# Create a Dask CUDA cluster w/ one worker per device
+from dask_cuda import LocalCUDACluster
+cluster = LocalCUDACluster()
 
-### Dependencies for Installing/Building from Source:
+# Read CSV file in parallel across workers
+import dask_cudf
+df = dask_cudf.read_csv("/path/to/csv")
 
-To install cuML from source, ensure the dependencies are met:
-
-1. [cuDF](https://github.com/rapidsai/cudf) (>=0.5.0)
-2. zlib Provided by zlib1g-dev in Ubuntu 16.04
-3. cmake (>= 3.12.4)
-4. CUDA (>= 9.2)
-5. Cython (>= 0.29)
-6. gcc (>=5.4.0)
-7. BLAS - Any BLAS compatible with Cmake's [FindBLAS](https://cmake.org/cmake/help/v3.12/module/FindBLAS.html)
-
-```bash
-# cuda 9.2
-conda install -c pytorch faiss-gpu cuda92
-
-# cuda 10.0
-conda install -c pytorch faiss-gpu cuda100
+# Fit a NearestNeighbors model and query it
+from cuml.dask.neighbors import NearestNeighbors
+nn = NearestNeighbors(n_neighbors = 10)
+nn.fit(df)
+neighbors = nn.kneighbors(df)
 ```
 
-### Installing from Source:
 
-Once dependencies are present, follow the steps below:
-
-1. Clone the repository.
-```bash
-$ git clone --recurse-submodules https://github.com/rapidsai/cuml.git
-```
-
-2. Build and install `libcuml` (the C++/CUDA library containing the cuML algorithms), starting from the repository root folder:
-```bash
-$ cd cuML
-$ mkdir build
-$ cd build
-$ cmake ..
-```
-
-If using a conda environment (recommended currently), then cmake can be configured appropriately via:
-
-```bash
-$ cmake .. -DCMAKE_INSTALL_PREFIX=$CONDA_PREFIX
-```
-
-Note: The following warning message is dependent upon the version of cmake and the `CMAKE_INSTALL_PREFIX` used. If this warning is displayed, the build should still run succesfully. We are currently working to resolve this open issue. You can silence this warning by adding `-DCMAKE_IGNORE_PATH=$CONDA_PREFIX/lib` to your `cmake` command.
-```
-Cannot generate a safe runtime search path for target ml_test because files
-in some directories may conflict with libraries in implicit directories:
-```
-
-The configuration script will print the BLAS found on the search path. If the version found does not match the version intended, use the flag `-DBLAS_LIBRARIES=/path/to/blas.so` with the `cmake` command to force your own version. 
+For additional examples, browse our complete [API
+documentation](https://docs.rapids.ai/api/cuml/stable/), or check out our
+introductory [walkthrough
+notebooks](https://github.com/rapidsai/notebooks/tree/master/cuml). Finally, you
+can find complete end-to-end examples in the [notebooks-contrib
+repo](https://github.com/rapidsai/notebooks-contrib).
 
 
-3. Build `libcuml`:
+### Supported Algorithms
+| Category | Algorithm | Notes |
+| --- | --- | --- |
+| **Clustering** |  Density-Based Spatial Clustering of Applications with Noise (DBSCAN) | |
+|  | K-Means | Multi-node multi-GPU via Dask |
+| **Dimensionality Reduction** | Principal Components Analysis (PCA) | Multi-node multi-GPU via Dask|
+| | Truncated Singular Value Decomposition (tSVD) | Multi-node multi-GPU via Dask |
+| | Uniform Manifold Approximation and Projection (UMAP) | |
+| | Random Projection | |
+| | t-Distributed Stochastic Neighbor Embedding (TSNE) | |
+| **Linear Models for Regression or Classification** | Linear Regression (OLS) | |
+| | Linear Regression with Lasso or Ridge Regularization | |
+| | ElasticNet Regression | |
+| | Logistic Regression | |
+| | Stochastic Gradient Descent (SGD), Coordinate Descent (CD), and Quasi-Newton (QN) (including L-BFGS and OWL-QN) solvers for linear models  | |
+| **Nonlinear Models for Regression or Classification** | Random Forest (RF) Classification | Experimental multi-node multi-GPU via Dask |
+| | Random Forest (RF) Regression | Experimental multi-node multi-GPU via Dask |
+| | Inference for decision tree-based models | Forest Inference Library (FIL) |
+|  | K-Nearest Neighbors (KNN) | Multi-node multi-GPU via Dask, uses [Faiss](https://github.com/facebookresearch/faiss) for Nearest Neighbors Query. |
+|  | K-Nearest Neighbors (KNN) Classification | |
+|  | K-Nearest Neighbors (KNN) Regression | |
+|  | Support Vector Machine Classifier (SVC) | |
+|  | Epsilon-Support Vector Regression (SVR) | |
+| **Time Series** | Linear Kalman Filter | |
+|  | Holt-Winters Exponential Smoothing | |
+|  | Auto-regressive Integrated Moving Average (ARIMA) | Supports seasonality (SARIMA) |
+---
 
-```bash
-$ make -j
-$ make install
-```
+## Installation
 
-To run tests (optional):
+See [the RAPIDS Release
+Selector](https://rapids.ai/start.html#rapids-release-selector) for the command
+line to install either nightly or official release cuML packages via Conda or
+Docker.
 
-```bash
-$ ./ml_test
-```
-
-If you want a list of the available tests:
-```bash
-$ ./ml_test --gtest_list_tests
-```
-
-4. Build the `cuml` python package:
-
-```bash
-$ cd ../../python
-$ python setup.py build_ext --inplace
-```
-
-To run Python tests (optional):
-
-```bash
-$ py.test -v
-```
-
-If you want a list of the available tests:
-```bash
-$ py.test cuML/test --collect-only
-```
-
-5. Finally, install the Python package to your Python path:
-
-```bash
-$ python setup.py install
-```
-
-### Python Notebooks
-
-Demo notebooks for the cuML Python algorithms can be found in the [rapidsai/notebooks](https://github.com/rapidsai/notebooks/tree/master/cuml) repository on Github.
-
-## External
-
-The external folders contains submodules that this project in-turn depends on. Appropriate location flags
-will be automatically populated in the main `CMakeLists.txt` file for these.
-
-Current external submodules are:
-
-- [CUTLASS](https://github.com/NVIDIA/cutlass)
-- [Google Test](https://github.com/google/googletest)
-- [CUB](https://github.com/NVlabs/cub)
+## Build/Install from Source
+See the build [guide](BUILD.md).
 
 ## Contributing
 
-Please use issues and pull requests to report bugs and add functionality.
+Please see our [guide for contributing to cuML](CONTRIBUTING.md).
 
 ## Contact
 
 Find out more details on the [RAPIDS site](https://rapids.ai/community.html)
-
 
 ## <div align="left"><img src="img/rapids_logo.png" width="265px"/></div> Open GPU Data Science
 
